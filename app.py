@@ -1,11 +1,26 @@
 import os
+import time
 
 import redis
-from flask import Flask, jsonify
+from flask import Flask, g, jsonify, request
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 
 app = Flask(__name__)
 
 ALERT_THRESHOLD = 25
+
+REQUEST_COUNT = Counter(
+    "http_requests_total",
+    "Nombre total de requetes HTTP",
+    ["method", "endpoint", "status"],
+)
+
+
+REQUEST_LATENCY = Histogram(
+    "http_request_duration_seconds",
+    "Duree de traitement des requetes HTTP",
+    ["method", "endpoint"],
+)
 
 
 def alert_threshold():
@@ -27,6 +42,28 @@ def get_redis_client():
         socket_connect_timeout=2,
         socket_timeout=2,
     )
+
+
+@app.before_request
+def start_timer():
+    g.start_time = time.perf_counter()
+
+
+@app.after_request
+def count_request(response):
+    # /metrics exclu : sinon chaque scrape Prometheus s'auto-compte
+    if request.path != "/metrics":
+        endpoint = request.url_rule.rule if request.url_rule else "unmatched"
+        REQUEST_COUNT.labels(request.method, endpoint, str(response.status_code)).inc()
+        start = g.get("start_time")
+        if start is not None:
+            REQUEST_LATENCY.labels(request.method, endpoint).observe(time.perf_counter() - start)
+    return response
+
+
+@app.route("/metrics")
+def metrics():
+    return generate_latest(), 200, {"Content-Type": CONTENT_TYPE_LATEST}
 
 
 @app.route("/health")
@@ -53,6 +90,11 @@ def status():
 def visits():
     count = get_redis_client().incr("visits")
     return jsonify(visits=count), 200
+
+
+@app.route("/simulate-error")
+def simulate_error():
+    return jsonify(status="error", detail="erreur simulee"), 500
 
 
 if __name__ == "__main__":
