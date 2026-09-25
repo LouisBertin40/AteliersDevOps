@@ -31,7 +31,12 @@ def get_redis_client():
 
 @app.route("/health")
 def health():
-    return jsonify(status="ok"), 200
+    """Healthcheck reel : verifie que Redis repond, 503 sinon."""
+    try:
+        get_redis_client().ping()
+    except redis.RedisError as exc:
+        return jsonify(status="error", redis="unreachable", detail=str(exc)), 503
+    return jsonify(status="ok", redis="ok"), 200
 
 
 @app.route("/status")
