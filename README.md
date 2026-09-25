@@ -11,13 +11,26 @@ Dépôt du groupe pour les ateliers DevOps (ESIEA, S9) : une petite application 
 - Les checks CI (`lint`, `test (3.10)`, `test (3.11)`, `test (3.12)`) doivent être verts pour merger.
 - Une branche par fonctionnalité (`feat/...`, `fix/...`, `ci/...`), fusionnée via PR.
 
-## Pipeline CI (`.github/workflows/ci.yml`)
+## Pipeline CI/CD (`.github/workflows/ci.yml`)
 
-Déclenché sur chaque pull request et sur chaque push sur `main`. Le job `lint` (flake8)
-s'exécute d'abord ; s'il passe, le job `test` (pytest + couverture) tourne en matrice sur
-Python 3.10, 3.11 et 3.12. Les dépendances pip sont mises en cache (clé = hash de
-`requirements.txt`) et le rapport de couverture HTML est publié en artefact, même en cas
-d'échec des tests.
+```
+lint ──▶ test (3.10 / 3.11 / 3.12) ──▶ build-and-push ──▶ deploy (environment: production)
+         └─ sur toutes les PR et les push sur main ─┘   └── uniquement sur push sur main ──┘
+```
+
+- **lint** : flake8. S'il échoue, `test` ne démarre pas (`needs: lint`).
+- **test** : pytest + couverture, en matrice sur Python 3.10, 3.11 et 3.12. Cache pip
+  (clé = hash de `requirements*.txt`) et rapport de couverture HTML publié en artefact,
+  même en cas d'échec (`if: always()`).
+- **build-and-push** : construit le `Dockerfile` multi-stage avec `GIT_SHA=<sha du commit>`
+  et le pousse sur `ghcr.io/louisbertin40/ateliersdevops` avec deux tags : `<sha>`
+  (immuable, identifie exactement la version) et `latest`.
+- **deploy** : environnement GitHub `production` avec **approbation humaine obligatoire**
+  (required reviewers), puis exécute `deploy/deploy.sh` avec l'image `<sha>` et
+  `EXPECTED_SHA=<sha>`. Le runner étant éphémère, chaque exécution repart d'un
+  environnement vierge (pas de `.active_color`, pas de conteneur existant).
+
+`main` est protégée : les checks `lint` et `test (3.x)` doivent être verts pour merger.
 
 ## Lancer en local
 
@@ -81,3 +94,49 @@ Registry : **GitHub Container Registry** —
 docker pull ghcr.io/louisbertin40/ateliersdevops:1.0.0   # version figée
 docker pull ghcr.io/louisbertin40/ateliersdevops:latest
 ```
+
+## Déploiement blue/green (`deploy/`)
+
+- `deploy/docker-compose.yml` : `redis` et `nginx` (port 8080) démarrent toujours ;
+  `app-blue` et `app-green` sont derrière les profils Compose `blue` / `green` et
+  exposent leur couleur (`DEPLOY_COLOR`) dans `/status`.
+- `deploy/nginx/upstream.conf.template` : conf nginx réécrite à chaque bascule vers
+  `app-<couleur>`.
+- `deploy/deploy.sh` :
+  1. lit la couleur active dans `deploy/.active_color` et cible l'autre ;
+  2. démarre la nouvelle version dans la couleur inactive ;
+  3. attend `/health` (qui vérifie Redis, 503 sinon) avec 20 tentatives espacées ;
+  4. smoke test sur `/status` : bonne `deploy_color` **et** `commit == EXPECTED_SHA` ;
+  5. succès : réécrit la conf, `nginx -t` puis `nginx -s reload`, enregistre l'état,
+     **puis** arrête l'ancienne couleur ;
+     échec : supprime la tentative, la couleur active et le trafic ne changent pas.
+
+```bash
+APP_IMAGE=ghcr.io/louisbertin40/ateliersdevops:<sha> EXPECTED_SHA=<sha> ./deploy/deploy.sh
+curl http://localhost:8080/status
+# {"commit":"<sha>","deploy_color":"green","service":"...","version":"1.0"}
+```
+
+Vérifications effectuées :
+
+| Scénario | Résultat |
+|---|---|
+| Déploiement normal | bascule blue → green, puis green → blue |
+| Redis injoignable (`REDIS_HOST=introuvable`) | `/health` en 503, rollback, couleur active inchangée |
+| SHA volontairement faux (`EXPECTED_SHA=deadbeef`) | smoke test rejeté, trafic inchangé |
+| Push réel sur `main` (version 1.0 → 1.1, PR #8) | pipeline complet, `/status` renvoie `1.1` |
+
+### Rollback manuel
+
+Problème découvert après un déploiement réussi : on annule le commit fautif avec
+`git revert` (jamais en modifiant l'environnement ou `.active_color` à la main), on relit
+le diff, puis on le fait passer par une PR et le pipeline normal.
+
+```bash
+git log --oneline
+git revert -m 1 <sha du merge fautif>   # -m 1 pour un commit de merge
+git diff HEAD~1                         # relire avant de pousser
+```
+
+Exemple : PR #9 a annulé la 1.1 (PR #8) ; après le déploiement, `/status` renvoie à
+nouveau `1.0`.
