@@ -1,1 +1,14 @@
-groups: []
+groups:
+  - name: application
+    rules:
+      - alert: HighErrorRate
+        # Même calcul que le panneau "Taux d'erreur" du dashboard
+        expr: |
+          (sum(rate(http_requests_total{status=~"5.."}[1m])) or vector(0))
+            / sum(rate(http_requests_total[1m])) > 0.05
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Taux d'erreur 5xx supérieur à 5 %"
+          description: "Taux d'erreur actuel : {{ $value | humanizePercentage }} (seuil : 5 % pendant 30 s)"
