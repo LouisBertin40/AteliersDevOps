@@ -1,0 +1,15 @@
+# Généré par deploy.sh — couleur active : __COLOR__
+server {
+    listen 80;
+
+    # Résolution DNS à la requête (DNS interne Docker) : nginx démarre même si
+    # la couleur ciblée n'est pas encore lancée.
+    resolver 127.0.0.11 valid=5s ipv6=off;
+    set $upstream http://app-__COLOR__:5000;
+
+    location / {
+        proxy_pass $upstream;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+}

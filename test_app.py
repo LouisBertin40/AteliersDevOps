@@ -51,6 +51,12 @@ def test_status_endpoint():
     assert data["version"] == "1.0"
 
 
+def test_status_exposes_deploy_color(monkeypatch):
+    monkeypatch.setenv("DEPLOY_COLOR", "green")
+    data = app.test_client().get("/status").get_json()
+    assert data["deploy_color"] == "green"
+
+
 def test_visits_endpoint_increments(monkeypatch):
     fake = FakeRedis()
     monkeypatch.setattr("app.get_redis_client", lambda: fake)
