@@ -27,3 +27,16 @@ pip install -r requirements.txt
 pytest -v
 flake8 .
 ```
+
+## Image Docker : naïve vs multi-stage
+
+Mesuré avec `docker images` après reconstruction des deux images (25/09/2026) :
+
+| Image | Dockerfile | Base | Taille |
+|---|---|---|---|
+| `ateliers-devops:naif` | `Dockerfile.naif` | `python:3.12` (1 stage) | **1,62 Go** |
+| `ateliers-devops:multistage` | `Dockerfile` | `python:3.12-slim` (builder + runtime) | **204 Mo** |
+
+Soit environ **-87 %**. L'essentiel du gain vient de l'image de base (`python:3.12` embarque
+compilateurs, headers et outils de build) ; le stage `builder` permet de ne copier que le
+venv dans l'image finale, sans cache pip.
