@@ -1,0 +1,58 @@
+# Environnement blue/green : redis + nginx démarrent toujours,
+# app-blue / app-green uniquement quand leur profil est activé.
+name: ateliers-bluegreen
+
+x-app: &app
+  image: ${APP_IMAGE:-ghcr.io/louisbertin40/ateliersdevops:latest}
+  environment: &app-env
+    REDIS_HOST: ${REDIS_HOST:-redis}
+    REDIS_PORT: "6379"
+  depends_on:
+    redis:
+      condition: service_healthy
+  networks:
+    - bluegreen
+
+services:
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - bluegreen
+
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "${PROXY_PORT:-8080}:80"
+    volumes:
+      # Répertoire monté (pas un fichier seul) : la réécriture de active.conf est bien vue
+      - ./nginx/conf.d:/etc/nginx/conf.d
+    networks:
+      - bluegreen
+
+  app-blue:
+    <<: *app
+    profiles: ["blue"]
+    environment:
+      <<: *app-env
+      DEPLOY_COLOR: blue
+
+  app-green:
+    <<: *app
+    profiles: ["green"]
+    environment:
+      <<: *app-env
+      DEPLOY_COLOR: green
+
+networks:
+  bluegreen:
+
+volumes:
+  redis-data:

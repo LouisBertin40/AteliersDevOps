@@ -8,4 +8,4 @@ htmlcov/
 coverage.xml
 .env
 deploy/.active_color
-deploy/nginx/active.conf
+deploy/nginx/conf.d/active.conf
