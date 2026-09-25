@@ -1,5 +1,5 @@
 import redis
-
+from prometheus_client import REGISTRY
 from app import alert_threshold, sanitize_input, app
 
 
@@ -69,3 +69,14 @@ def test_visits_endpoint_increments(monkeypatch):
     client = app.test_client()
     assert client.get("/visits").get_json()["visits"] == 1
     assert client.get("/visits").get_json()["visits"] == 2
+
+
+def test_metrics_counts_requests_but_not_itself():
+    client = app.test_client()
+    labels = {"method": "GET", "endpoint": "/status", "status": "200"}
+    before = REGISTRY.get_sample_value("http_requests_total", labels) or 0
+    client.get("/status")
+    client.get("/metrics")
+    after = REGISTRY.get_sample_value("http_requests_total", labels)
+    assert after == before + 1
+    assert 'endpoint="/metrics"' not in client.get("/metrics").get_data(as_text=True)
