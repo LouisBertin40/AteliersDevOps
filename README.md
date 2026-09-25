@@ -140,3 +140,69 @@ git diff HEAD~1                         # relire avant de pousser
 
 Exemple : PR #9 a annulé la 1.1 (PR #8) ; après le déploiement, `/status` renvoie à
 nouveau `1.0`.
+
+## Observabilité (Prometheus & Grafana)
+
+### Lancer la stack
+
+```bash
+cp .env.example .env    # puis changer GRAFANA_ADMIN_PASSWORD
+docker compose up -d --build
+```
+
+Une seule commande démarre `web`, `redis`, `prometheus` et `grafana`.
+
+| Interface | URL | Accès |
+|---|---|---|
+| Application | http://localhost:5000 | – |
+| Métriques brutes | http://localhost:5000/metrics | – |
+| Prometheus | http://localhost:9090 | – |
+| Grafana | http://localhost:3000 | identifiants de `.env` (`admin` / `admin` par défaut) |
+
+### Métriques exposées par l'application
+
+- `http_requests_total{method, endpoint, status}` : compteur de requêtes HTTP.
+  `/metrics` est exclu pour que les scrapes de Prometheus ne se comptent pas eux-mêmes.
+- `http_request_duration_seconds{method, endpoint}` : histogramme de latence
+  (buckets, `_count`, `_sum`), qui permet de calculer des percentiles.
+- `/simulate-error` renvoie toujours une erreur 500 : il sert à tester l'alerte.
+
+Prometheus scrape `web:5000/metrics` toutes les 5 s (vérifiable sur
+http://localhost:9090/targets, la cible doit être `UP`).
+
+### Dashboard
+
+Grafana → **Dashboards → « Application Flask - Observabilité »**, rafraîchi toutes les 5 s :
+
+- **Débit par endpoint** (req/s) : `sum by (endpoint) (rate(http_requests_total[1m]))`
+- **Taux d'erreur global** : part des réponses 5xx dans le total, avec une ligne rouge au seuil
+  d'alerte de 5 %.
+- **Latence p95 par endpoint** : 95 % des requêtes sont servies en moins de cette durée.
+  Contrairement à une moyenne, elle révèle les lenteurs occasionnelles.
+
+La datasource et le dashboard sont **provisionnés** depuis `monitoring/grafana/provisioning/` :
+ils sont recréés à chaque démarrage et survivent à un `docker compose down -v`. Pour modifier
+le dashboard, on édite le JSON du dépôt, pas l'interface.
+
+### Alerte configurée
+
+| Alerte | Condition | Délai (`for`) |
+|---|---|---|
+| `HighErrorRate` (critical) | taux de réponses 5xx > **5 %** | **30 s** |
+
+État visible sur http://localhost:9090/alerts. Pour la déclencher :
+
+```powershell
+1..240 | % { curl.exe -s localhost:5000/status > $null; curl.exe -s localhost:5000/simulate-error > $null; Start-Sleep -Milliseconds 500 }
+```
+
+L'alerte passe par `inactive` → `pending` (seuil dépassé, délai de 30 s en cours) → `firing`,
+puis revient à `inactive` une à deux minutes après l'arrêt des erreurs.
+
+### Requêtes PromQL utiles
+
+| Requête | Donne |
+|---|---|
+| `rate(http_requests_total[1m])` | débit en req/s (le compteur brut n'est qu'un cumul) |
+| `sum by (status) (rate(http_requests_total[1m]))` | débit par code HTTP |
+| `histogram_quantile(0.95, sum by (le, endpoint) (rate(http_request_duration_seconds_bucket[1m])))` | latence p95 |
