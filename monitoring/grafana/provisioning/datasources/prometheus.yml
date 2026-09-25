@@ -1,0 +1,10 @@
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus          # uid fixe : le dashboard de l'étape 6 le référencera
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090   # nom du service Compose, pas localhost
+    isDefault: true
+    editable: false
