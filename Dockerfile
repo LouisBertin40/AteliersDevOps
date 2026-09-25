@@ -11,6 +11,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # ---- Stage 2 : runtime — slim, sans outils de build ni cache pip ----
 FROM python:3.12-slim
 
+LABEL org.opencontainers.image.source="https://github.com/LouisBertin40/AteliersDevOps"
+
 # Les ENV du stage builder ne survivent pas : on redéclare le PATH du venv
 ENV VIRTUAL_ENV=/opt/venv \
     PATH="/opt/venv/bin:$PATH" \
