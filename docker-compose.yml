@@ -1,0 +1,35 @@
+services:
+  web:
+    build: .
+    image: ghcr.io/louisbertin40/ateliersdevops:latest
+    ports:
+      - "${WEB_PORT:-5000}:5000"
+    environment:
+      # Nom du service Compose, résolu par le DNS du réseau dédié
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - backend
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks:
+      - backend
+
+networks:
+  backend:
+
+volumes:
+  redis-data:

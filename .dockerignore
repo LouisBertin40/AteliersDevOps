@@ -1,0 +1,4 @@
+# Tout exclure, puis n'autoriser que le strict nécessaire
+*
+!app.py
+!requirements.txt
