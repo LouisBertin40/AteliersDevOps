@@ -26,4 +26,8 @@ COPY --chown=appuser:appuser app.py .
 USER appuser
 
 EXPOSE 5000
+
+# Pas de curl dans l'image slim : on utilise Python lui-même
+HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3   CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:5000/health', timeout=2).status == 200 else 1)"
+
 CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "app:app"]
