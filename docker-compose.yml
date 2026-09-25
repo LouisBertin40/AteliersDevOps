@@ -28,8 +28,20 @@ services:
     networks:
       - backend
 
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus:/etc/prometheus:ro
+      - prometheus-data:/prometheus
+    depends_on:
+      - web
+    networks:
+      - backend
 networks:
   backend:
 
 volumes:
   redis-data:
+  prometheus-data:
