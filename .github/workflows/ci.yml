@@ -77,3 +77,28 @@ jobs:
             ${{ env.IMAGE }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build-and-push
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Connexion à ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # Runner éphémère : aucun état (.active_color) ni conteneur ne survit d'un run
+      # à l'autre, le script repart donc toujours d'un environnement vierge.
+      - name: Déploiement blue/green
+        env:
+          APP_IMAGE: ghcr.io/louisbertin40/ateliersdevops:${{ github.sha }}
+        run: ./deploy/deploy.sh
+      - name: Vérification via nginx
+        run: curl -fsS http://localhost:8080/status
