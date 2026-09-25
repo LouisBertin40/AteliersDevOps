@@ -1,0 +1,10 @@
+apiVersion: 1
+
+providers:
+  - name: default
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false      # le JSON du repo fait foi, pas l'interface
+    updateIntervalSeconds: 10  # Grafana relit le JSON toutes les 10 s
+    options:
+      path: /etc/grafana/provisioning/dashboards/json
