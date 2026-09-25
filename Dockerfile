@@ -13,6 +13,10 @@ FROM python:3.12-slim
 
 LABEL org.opencontainers.image.source="https://github.com/LouisBertin40/AteliersDevOps"
 
+# SHA du commit injecté au build (docker build --build-arg GIT_SHA=...)
+ARG GIT_SHA=unknown
+ENV GIT_SHA=$GIT_SHA
+
 # Les ENV du stage builder ne survivent pas : on redéclare le PATH du venv
 ENV VIRTUAL_ENV=/opt/venv \
     PATH="/opt/venv/bin:$PATH" \

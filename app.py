@@ -45,6 +45,7 @@ def status():
         service="projet-devops-groupe-demo",
         version="1.0",
         deploy_color=os.environ.get("DEPLOY_COLOR", "none"),
+        commit=os.environ.get("GIT_SHA", "unknown"),
     ), 200
 
 

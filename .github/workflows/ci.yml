@@ -72,6 +72,8 @@ jobs:
         with:
           context: .
           push: true
+          build-args: |
+            GIT_SHA=${{ github.sha }}
           tags: |
             ${{ env.IMAGE }}:${{ github.sha }}
             ${{ env.IMAGE }}:latest
@@ -99,6 +101,7 @@ jobs:
       - name: Déploiement blue/green
         env:
           APP_IMAGE: ghcr.io/louisbertin40/ateliersdevops:${{ github.sha }}
+          EXPECTED_SHA: ${{ github.sha }}
         run: ./deploy/deploy.sh
       - name: Vérification via nginx
         run: curl -fsS http://localhost:8080/status

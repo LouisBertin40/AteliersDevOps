@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Déploiement blue/green avec rollback automatique.
 #
-# Usage : APP_IMAGE=ghcr.io/louisbertin40/ateliersdevops:<tag> ./deploy/deploy.sh
+# Usage : APP_IMAGE=ghcr.io/louisbertin40/ateliersdevops:<sha> EXPECTED_SHA=<sha> ./deploy/deploy.sh
 #
 # 1. lit la couleur active dans .active_color et choisit la couleur inactive
 # 2. démarre la nouvelle version dans la couleur inactive
-# 3. attend qu'elle soit prête (/health, tentatives espacées) puis smoke test (/status)
+# 3. attend qu'elle soit prête (/health, tentatives espacées) puis smoke test (/status :
+#    bonne couleur ET bon SHA de commit si EXPECTED_SHA est fourni)
 # 4. succès : bascule nginx (reload), enregistre l'état, arrête l'ancienne couleur
 #    échec  : supprime la tentative, la couleur active ne change pas
 set -euo pipefail
@@ -18,6 +19,7 @@ TEMPLATE="nginx/upstream.conf.template"
 RETRIES="${RETRIES:-20}"
 DELAY="${DELAY:-3}"
 export APP_IMAGE="${APP_IMAGE:-ghcr.io/louisbertin40/ateliersdevops:latest}"
+EXPECTED_SHA="${EXPECTED_SHA:-}"
 
 log() { echo "[deploy] $*"; }
 
@@ -48,7 +50,7 @@ import urllib.request
 
 urllib.request.urlopen("http://127.0.0.1:5000/health", timeout=2)
 status = json.load(urllib.request.urlopen("http://127.0.0.1:5000/status", timeout=2))
-print(status.get("deploy_color", ""))
+print(status.get("deploy_color", ""), status.get("commit", ""))
 PY
 }
 
@@ -64,9 +66,12 @@ done
 
 [ -n "$result" ] || rollback "healthcheck KO après $RETRIES tentatives"
 
-color="$result"
+read -r color commit <<< "$result"
 [ "$color" = "$target" ] || rollback "smoke test : deploy_color='$color', attendu '$target'"
-log "smoke test OK (deploy_color=$color)"
+if [ -n "$EXPECTED_SHA" ] && [ "$commit" != "$EXPECTED_SHA" ]; then
+  rollback "smoke test : commit='$commit', attendu '$EXPECTED_SHA'"
+fi
+log "smoke test OK (deploy_color=$color, commit=$commit)"
 
 # Bascule : nouvelle conf, validation, reload de nginx AVANT d'arrêter l'ancienne couleur
 previous_conf="$(cat "$CONF_FILE")"
